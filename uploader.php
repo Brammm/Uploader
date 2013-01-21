@@ -1,8 +1,6 @@
 <?php
 /*
 * Uploader v1
-* Copyright (c) group94 - http://www.group94.com
-* Unauthorised use, copying and/or redistributing is strictly prohibited.
 *
 * JavaScript for processing uploads through conventional file inputs, swfupload or the HTML File API.
 * 
@@ -14,9 +12,9 @@
 * - remove files from queue
 * - better error alert when there's no files
 * - add swfupload support
-* - add file dimension check
 * - add file restriction in uploader
 * - add option to upload all files in one request (at the moment one request per file)
+* - define all error strings as constants
 *
 * > REFERENCE DOCUMENTATION
 * http://www.html5rocks.com/en/tutorials/file/dndfiles/
@@ -53,11 +51,12 @@ class Uploader {
 		'upload_path'				=> 'library/',										// upload path relative to the DOCROOT
 		'url_path'					=> 'library/',										// URL where the image will reside
 
-		'allowed_filetypes'		=> 'jpg|jpeg|png', 								// Allowed filetypes to upload
+		'allowed_filetypes'		=> 'jpg|jpeg|png|zip', 								// Allowed filetypes to upload
 		'min_w'						=> 960,												// Minimum and maximum dimensions
 		'min_h'						=> 660,
 		'max_w'						=> 3500,
 		'max_h'						=> 3500,
+		'max_filesize'				=> 2,													// The maximum filesize for uploads in MB
 		'max_files'					=> 1,													// maximum amount of files that can be uploaded
 		'start_file_inputs'		=> 1, 												// how many file inputs we start with when there's no support, should not be bigger than max_files
 		'drag_n_drop_element'	=> null,												// CSS selector that references the element where you can drop files on.
@@ -156,42 +155,53 @@ class Uploader {
 					$extension	= $pathinfo['extension'];
 					$basename	= $pathinfo['basename'];
 
-
 					// validate the file
-					$upload_file = false;
 					
-					if(strpos($this->conf['allowed_filetypes'], $extension) !== false) {
-					
-						$image_size = getimagesize($tmp_name);
-						if($image_size !== false) {
-							// we are dealing with an image, it must fit the min and max dimensions
-							$img_w = $image_size[0];
-							$img_h = $image_size[1];
-							
-							$min_w = $this->conf['min_w'];
-							$min_h = $this->conf['min_h'];
-							$max_w = $this->conf['max_w'];
-							$max_h = $this->conf['max_h'];
-							
-							// if( 
-								// ($img_w == $max_w && ($img_h >= $min_h && $img_h <= $max_h))
-								// || ($img_h == $max_h && ($img_w >= $min_w && $img_w <= $max_w))
-							// ) 
-							if(($img_w >= $min_w && $img_w <= $max_w) && ($img_h >= $min_h && $img_h <= $max_h))
-							{
-								$upload_file = true;
-							} else {
-								$json['errors'][] = 'INCORRECT_DIMENSIONS';
-							}
-						
-						} else {
-							$upload_file = true;
-						}
+					// check filesize
+					$filesizeMB = filesize($tmp_name) / 1024 / 1024;
+					if($filesizeMB > $this->conf['max_filesize']) {
+						$filesize_ok = false;
+						$json['errors'][] = 'MAX_FILESIZE_EXCEEDED';
 					} else {
+						$filesize_ok = true;
+					}
+					
+					// check file type (TODO: purely based on extension atm, might wanna check based on mime type?)
+					if(strpos($this->conf['allowed_filetypes'], $extension) !== false) {
+						$filetype_ok = true;
+					} else {
+						$filetype_ok = false;
 						$json['errors'][] = 'INCORRECT_FILETYPE';
 					}
+					
+					// check image dimensions
+					$image_size = getimagesize($tmp_name);
+					if($image_size !== false) {
+						// we are dealing with an image, it must fit the min and max dimensions
+						$img_w = $image_size[0];
+						$img_h = $image_size[1];
+						
+						$min_w = $this->conf['min_w'];
+						$min_h = $this->conf['min_h'];
+						$max_w = $this->conf['max_w'];
+						$max_h = $this->conf['max_h'];
+						
+						// if( 
+							// ($img_w == $max_w && ($img_h >= $min_h && $img_h <= $max_h))
+							// || ($img_h == $max_h && ($img_w >= $min_w && $img_w <= $max_w))
+						// ) 
+						if(($img_w >= $min_w && $img_w <= $max_w) && ($img_h >= $min_h && $img_h <= $max_h))
+						{
+							$dimensions_ok = true;
+						} else {
+							$dimensions_ok = false;
+							$json['errors'][] = 'INCORRECT_DIMENSIONS';
+						}
+					} else {
+						$dimensions_ok = true; // accept file if we were unable to get dimensions
+					}
 
-					if($upload_file) {
+					if($filesize_ok && $filetype_ok && $dimensions_ok) {
 						// let's make sure we have a unique file name
 						do 
 						{
